@@ -28,12 +28,18 @@ def operator_processor(column, operator_func, filter1, filter2):
     return operator_func(filter1(column), filter2(column))
 
 
+def operator_multi_processor(column, operator_func, filters):
+    """Combine the output of multiple column filters using the operator (OR, AND) passed in"""
+    return functools.reduce(operator_func, [f(column) for f in filters])
+
+
 operator_map = {"OR": operator.or_, "AND": operator.and_}
 
 
 class AgGridRequest(GridRequest):
     agg_lookup = {"avg": "mean"}
 
+    # filter operations are done on pandas series
     FILTER_OPERATORS = {
         ("set", None): lambda column, filter_value: column.astype(str).isin(
             filter_value
@@ -81,18 +87,11 @@ class AgGridRequest(GridRequest):
                 ),
             )
         elif f.get("filterType") == "multi":
-            # TODO: Potentially handle more than two filters
             filter_models = [x for x in f.get("filterModels") if x is not None]
-            if len(filter_models) == 1:
-                if filter_models[0] is not None:
-                    return self.filter_to_func(filter_models[0])
-                else:
-                    return self.filter_to_func(filter_models[1])
             return column_filter(
-                operator_processor,
+                operator_multi_processor,
                 operator_map["AND"],
-                self.filter_to_func(filter_models[0]),
-                self.filter_to_func(filter_models[1]),
+                [self.filter_to_func(f) for f in filter_models],
             )
         else:
             return column_filter(
